@@ -17,6 +17,7 @@
       --text: #F1F2F6;
       --text-dim: #A4B0BE;
       --text-muted: #57606F;
+      --dropdown-bg: #121621;
     }
 
     * {
@@ -179,6 +180,7 @@
       text-transform: uppercase;
     }
 
+    /* Dropdown Styling & High Contrast Dropdown Options Fix */
     .input-group select, .input-group input {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -188,6 +190,7 @@
       font-size: 13px;
       outline: none;
       transition: all 0.2s ease;
+      cursor: pointer;
     }
 
     .input-group select:focus, .input-group input:focus {
@@ -195,8 +198,21 @@
       box-shadow: 0 0 8px var(--accent-glow);
     }
 
+    /* Fix dropdown text contrast on dark background */
+    .input-group select option {
+      background-color: var(--dropdown-bg);
+      color: var(--text);
+      padding: 8px;
+    }
+
+    .btn-container {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
     .btn-calculate {
-      width: 100%;
+      flex: 2;
       background: linear-gradient(135deg, var(--accent) 0%, #5130A4 100%);
       color: white;
       border: none;
@@ -205,13 +221,29 @@
       font-size: 15px;
       font-weight: 700;
       cursor: pointer;
-      margin-top: 16px;
       box-shadow: 0 4px 20px var(--accent-glow);
       transition: transform 0.1s ease, box-shadow 0.2s ease;
     }
 
     .btn-calculate:active {
       transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-dim);
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
     }
 
     /* Strategy Recommendation */
@@ -228,10 +260,15 @@
       margin-bottom: 8px;
     }
 
-    .strategy-card p {
+    .strategy-card p, .strategy-card ul {
       font-size: 13px;
       color: var(--text-dim);
       line-height: 1.6;
+    }
+
+    .strategy-card ul {
+      margin-top: 6px;
+      padding-left: 20px;
     }
 
     @media (max-width: 480px) {
@@ -239,6 +276,10 @@
         grid-template-columns: 1fr;
         gap: 8px;
         padding: 16px 0;
+      }
+
+      .btn-container {
+        flex-direction: column;
       }
     }
   </style>
@@ -275,14 +316,18 @@
 
       <form id="sleep-form">
         <div id="days-container"></div>
-        <button type="button" class="btn-calculate" onclick="calculateDeficit()">Update Deficit Protocol</button>
+        <div class="btn-container">
+          <button type="button" class="btn-calculate" onclick="calculateDeficit()">Update Protocol</button>
+          <button type="button" class="btn-secondary" onclick="presetRecentContext()">Fill Context</button>
+          <button type="button" class="btn-secondary" onclick="resetForm()">Reset</button>
+        </div>
       </form>
     </div>
 
     <!-- Strategy Protocol Output -->
     <div class="strategy-card">
       <h3>Recommended Weekly Protocol</h3>
-      <p id="protocol-text">Enter your completed sleep cycles and naps above to recalculate your minimum viable sleep strategy for the remainder of the week.</p>
+      <div id="protocol-text">Enter your completed sleep cycles and naps above to recalculate your minimum viable sleep strategy for the remainder of the week.</div>
     </div>
   </div>
 
@@ -295,18 +340,17 @@
 
     function renderDays() {
       const container = document.getElementById('days-container');
-      const todayIndex = new Date().getDay();
 
       container.innerHTML = days.map((day, idx) => `
         <div class="day-row">
           <div class="day-name">${day}</div>
           <div class="input-group">
             <label>Overnight</label>
-            <select id="night-${idx}">
+            <select id="night-${idx}" onchange="calculateDeficit()">
               <option value="none">-- Not Yet --</option>
-              <option value="5" ${idx < todayIndex ? (idx === 0 ? 'selected' : '') : ''}>5 Cycles (7.5h)</option>
-              <option value="4" ${idx === 1 && todayIndex > 1 ? '' : ''}>4 Cycles (6.0h)</option>
-              <option value="3" ${idx === 0 ? 'selected' : ''}>3 Cycles (4.5h)</option>
+              <option value="5">5 Cycles (7.5h)</option>
+              <option value="4">4 Cycles (6.0h)</option>
+              <option value="3">3 Cycles (4.5h)</option>
               <option value="2">2 Cycles (3.0h)</option>
               <option value="1">1 Cycle (1.5h)</option>
               <option value="0">0 Cycles (0.0h)</option>
@@ -314,14 +358,33 @@
           </div>
           <div class="input-group">
             <label>Day Nap</label>
-            <select id="nap-${idx}">
+            <select id="nap-${idx}" onchange="calculateDeficit()">
               <option value="0">None</option>
-              <option value="1" ${idx === 1 ? 'selected' : ''}>1 Cycle Nap (90m)</option>
-              <option value="0.33">Power Nap (20m)</option>
+              <option value="1">1 Cycle Nap (90m)</option>
+              <option value="0.22">Power Nap (20m)</option>
             </select>
           </div>
         </div>
       `).join('');
+    }
+
+    function presetRecentContext() {
+      // Sets Sunday 3 cycles, Monday 1-cycle nap & ~2 cycles overnight
+      document.getElementById('night-0').value = '3';
+      document.getElementById('nap-0').value = '0';
+
+      document.getElementById('night-1').value = '2';
+      document.getElementById('nap-1').value = '1';
+
+      calculateDeficit();
+    }
+
+    function resetForm() {
+      days.forEach((_, idx) => {
+        document.getElementById(`night-${idx}`).value = 'none';
+        document.getElementById(`nap-${idx}`).value = '0';
+      });
+      calculateDeficit();
     }
 
     function calculateDeficit() {
@@ -354,12 +417,19 @@
       const minSleepSub = document.getElementById('min-sleep-sub');
       const protocolText = document.getElementById('protocol-text');
 
+      if (loggedDaysCount === 0) {
+        minSleepVal.innerText = '4.0 cycles';
+        minSleepSub.innerText = 'Select completed days above';
+        protocolText.innerHTML = '<p>Enter your completed sleep cycles and naps above to recalculate your minimum viable sleep strategy for the remainder of the week.</p>';
+        return;
+      }
+
       if (remainingDays === 0) {
         minSleepVal.innerText = 'Week Done';
         minSleepSub.innerText = 'Resetting next week';
-        protocolText.innerText = cycleDeficit > 0 
-          ? `You accumulated a total deficit of ${hourDeficit} hours this week. Prioritize a 5-cycle sleep night (8.5h in bed) to start the next cycle fresh.`
-          : 'Great job! You maintained your sleep baseline with zero deficit accumulated this week.';
+        protocolText.innerHTML = cycleDeficit > 0 
+          ? `<p>You accumulated a total deficit of <strong>${hourDeficit} hours</strong> (${cycleDeficit.toFixed(1)} cycles) this week. Prioritize a 5-cycle sleep night (8.5h in bed) to start the next cycle fresh.</p>`
+          : '<p>Great job! You maintained your sleep baseline with zero deficit accumulated this week.</p>';
         return;
       }
 
@@ -370,17 +440,21 @@
       minSleepSub.innerText = `~${(minRequiredCyclesPerNight * 1.5).toFixed(1)} hours/night for next ${remainingDays} days`;
 
       // Custom Strategy Recommendation Output
-      if (cycleDeficit > 2) {
-        protocolText.innerHTML = `<strong>High Deficit Warning:</strong> You are currently carrying a deficit of <strong>${hourDeficit} hours</strong> (${cycleDeficit.toFixed(1)} cycles).<br>To prevent cognitive drop-off:
+      if (cycleDeficit >= 3) {
+        protocolText.innerHTML = `<p><strong>High Deficit Warning:</strong> You are currently carrying a deficit of <strong>${hourDeficit} hours</strong> (${cycleDeficit.toFixed(1)} cycles).</p>
         <ul>
-          <li style="margin-top:6px;">Target <strong>at least 4 cycles (6h)</strong> every night for the rest of the week.</li>
-          <li>Schedule at least one <strong>5-cycle recovery night</strong> as soon as possible.</li>
-          <li>Limit 3-cycle emergency nights to <strong>max 1-2 per week</strong>.</li>
+          <li>Target <strong>at least 4 cycles (6h)</strong> every remaining night to prevent severe mental degradation.</li>
+          <li>Schedule a <strong>5-cycle recovery night (8.5h in bed)</strong> as soon as possible.</li>
+          <li>Do not take any more 3-cycle or sub-3-cycle nights for the rest of the week.</li>
         </ul>`;
       } else if (cycleDeficit > 0) {
-        protocolText.innerHTML = `<strong>Moderate Deficit:</strong> You are behind by ${hourDeficit} hours. Maintain a steady floor of <strong>4 cycles (6.0h)</strong> or <strong>5 cycles (7.5h)</strong> to cleanly recover without needing daytime naps.`;
+        protocolText.innerHTML = `<p><strong>Moderate Deficit:</strong> You are behind by <strong>${hourDeficit} hours</strong> (${cycleDeficit.toFixed(1)} cycles).</p>
+        <ul>
+          <li>Maintain a steady floor of <strong>4 cycles (6.0h)</strong> or <strong>5 cycles (7.5h)</strong>.</li>
+          <li>Avoid back-to-back 3-cycle nights.</li>
+        </ul>`;
       } else {
-        protocolText.innerHTML = `<strong>Optimal Sleep Balance:</strong> You have zero active sleep deficit. You can safely sustain your baseline of 4 to 5 cycles per night.`;
+        protocolText.innerHTML = `<p><strong>Optimal Sleep Balance:</strong> You have zero active sleep deficit. You can safely sustain your standard baseline of 4 to 5 cycles per night.</p>`;
       }
     }
 
