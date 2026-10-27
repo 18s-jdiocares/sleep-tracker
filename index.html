@@ -526,6 +526,7 @@
                 <label>Overnight Cycles</label>
                 <select id="cycles-select-${idx}" onchange="calculateDeficit()">
                   <option value="none">-- Not Logged --</option>
+                  <option value="6">6 Cycles (9.0h surplus / recovery)</option>
                   <option value="5">5 Cycles (7.5h baseline)</option>
                   <option value="4">4 Cycles (6.0h floor)</option>
                   <option value="3">3 Cycles (4.5h short)</option>
@@ -544,16 +545,16 @@
                   <option value="1">1 Cycle Nap (90m)</option>
                   <option value="2">2 Cycle Nap (180m)</option>
                 </select>
-              </div>
-
-              <!-- Cycle Result Badge -->
-              <div class="cycle-badge" id="cycles-display-${idx}">
-                --
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
+    // Convert total sleep duration minutes into completed cycles (subtracts 15m fall-asleep latency)
+    function convertMinutesToCycles(minutes) {
+      if (minutes <= 0 || isNaN(minutes)) return 0;
+      const sleepMin = Math.max(0, minutes - 15); // 15m fall-asleep buffer
+      if (sleepMin < 120) return 1;               // 1 cycle (95m sleep)
+      if (sleepMin < 210) return 2;               // 2 cycles (190m sleep)
+      if (sleepMin < 305) return 3;               // 3 cycles (285m sleep)
+      if (sleepMin < 395) return 4;               // 4 cycles (360m sleep)
+      if (sleepMin < 485) return 5;               // 5 cycles (450m sleep)
+      return 6;                                   // 6+ cycles (540m+ sleep)
     }
 
     function setMode(dayIdx, mode) {
