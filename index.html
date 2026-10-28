@@ -197,6 +197,63 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    /* Toggle Switch Style */
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(255, 255, 255, 0.15);
+      transition: .3s;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 2px;
+      bottom: 2px;
+      background-color: var(--text);
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan-glow);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(16px);
+      background-color: #000;
     }
 
     /* Day Row Layout */
@@ -312,7 +369,6 @@
       transition: all 0.2s ease;
     }
 
-    /* High contrast select dropdown options */
     select option {
       background-color: var(--dropdown-bg);
       color: var(--text);
@@ -442,7 +498,13 @@
     <div class="schedule-card">
       <div class="section-title">
         <span>Weekly Log (Sun – Sat)</span>
-        <span style="font-size: 12px; color: var(--text-dim); font-weight: normal;">Wake Ref: 5:15 AM</span>
+        <div class="toggle-container">
+          <span>Round to Nearest Cycle</span>
+          <label class="switch">
+            <input type="checkbox" id="round-toggle" onchange="calculateDeficit()">
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
 
       <form id="sleep-form">
@@ -463,19 +525,17 @@
     const FLOOR_CYCLES = 4;    // 6.0h floor
     const TODAY_INDEX = new Date().getDay(); // 0 = Sun, 1 = Mon ...
 
-    // Store per-day active mode ('time', 'duration', 'cycles')
     const activeModes = Array(7).fill('time');
 
-    // Convert total sleep duration minutes into completed cycles (subtracts 15m fall-asleep latency)
-    function convertMinutesToCycles(minutes) {
+    function convertMinutesToCycles(minutes, shouldRound = false) {
       if (minutes <= 0 || isNaN(minutes)) return 0;
-      const sleepMin = Math.max(0, minutes - 15); // 15m fall-asleep buffer
-      if (sleepMin < 120) return 1;               // 1 cycle (95m sleep)
-      if (sleepMin < 210) return 2;               // 2 cycles (190m sleep)
-      if (sleepMin < 305) return 3;               // 3 cycles (285m sleep)
-      if (sleepMin < 395) return 4;               // 4 cycles (360m sleep)
-      if (sleepMin < 485) return 5;               // 5 cycles (450m sleep)
-      return 6;                                   // 6+ cycles (540m+ sleep)
+      const sleepMin = Math.max(0, minutes - 15); // Subtract 15m latency
+      const exactCycles = sleepMin / 90.0;
+      
+      if (shouldRound) {
+        return Math.round(exactCycles);
+      }
+      return exactCycles;
     }
 
     function renderDays() {
@@ -559,7 +619,6 @@
     function setMode(dayIdx, mode) {
       activeModes[dayIdx] = mode;
       
-      // Update toggle button visuals for this day
       const row = document.getElementById(`day-row-${dayIdx}`);
       if (row) {
         const btns = row.querySelectorAll('.mode-btn');
@@ -567,7 +626,6 @@
         btns[1].className = `mode-btn ${mode === 'duration' ? 'active' : ''}`;
         btns[2].className = `mode-btn ${mode === 'cycles' ? 'active' : ''}`;
 
-        // Toggle visibility of input groups directly in the DOM without re-rendering the whole form
         document.getElementById(`group-time-${dayIdx}`).style.display = mode === 'time' ? 'flex' : 'none';
         document.getElementById(`group-duration-${dayIdx}`).style.display = mode === 'duration' ? 'flex' : 'none';
         document.getElementById(`group-cycles-${dayIdx}`).style.display = mode === 'cycles' ? 'flex' : 'none';
@@ -577,13 +635,11 @@
     }
 
     function presetRecentContext() {
-      // Set Sunday to 3 cycles via Time in Bed (11:40 PM -> 5:15 AM)
       setMode(0, 'time');
       document.getElementById('bed-0').value = '23:40';
       document.getElementById('wake-0').value = '05:15';
       document.getElementById('nap-0').value = '0';
 
-      // Set Monday to 2 cycles + 1 cycle nap via Duration (3h 36m overnight)
       setMode(1, 'duration');
       document.getElementById('dur-h-1').value = '3';
       document.getElementById('dur-m-1').value = '36';
@@ -619,6 +675,8 @@
       let totalCyclesLogged = 0;
       let previousNightCycles = null;
 
+      const shouldRound = document.getElementById('round-toggle')?.checked || false;
+
       days.forEach((_, idx) => {
         const mode = activeModes[idx];
         const napVal = parseFloat(document.getElementById(`nap-${idx}`)?.value) || 0;
@@ -634,14 +692,14 @@
             let wakeDate = new Date(`1970-01-01T${wakeVal}:00`);
             if (wakeDate <= bedDate) wakeDate.setDate(wakeDate.getDate() + 1);
             const durationMin = (wakeDate - bedDate) / (1000 * 60);
-            nightCycles = convertMinutesToCycles(durationMin);
+            nightCycles = convertMinutesToCycles(durationMin, shouldRound);
           }
         } else if (mode === 'duration') {
           const h = parseInt(document.getElementById(`dur-h-${idx}`)?.value) || 0;
           const m = parseInt(document.getElementById(`dur-m-${idx}`)?.value) || 0;
           const totalMin = (h * 60) + m;
           if (totalMin > 0) {
-            nightCycles = convertMinutesToCycles(totalMin);
+            nightCycles = convertMinutesToCycles(totalMin, shouldRound);
           }
         } else if (mode === 'cycles') {
           const selectVal = document.getElementById(`cycles-select-${idx}`)?.value;
@@ -654,7 +712,11 @@
           loggedDaysCount++;
           const totalDayCycles = nightCycles + napVal;
           totalCyclesLogged += totalDayCycles;
-          if (displayBadge) displayBadge.innerText = `${totalDayCycles.toFixed(1)} cyc`;
+          if (displayBadge) {
+            displayBadge.innerText = shouldRound 
+              ? `${Math.round(totalDayCycles)} cyc` 
+              : `${totalDayCycles.toFixed(1)} cyc`;
+          }
 
           if (idx === (TODAY_INDEX - 1 + 7) % 7 || idx === TODAY_INDEX) {
             previousNightCycles = nightCycles;
@@ -664,13 +726,11 @@
         }
       });
 
-      // Deficit calculation against 5-cycle baseline
       const targetCyclesSoFar = loggedDaysCount * BASELINE_CYCLES;
       const cycleDeficit = Math.max(0, targetCyclesSoFar - totalCyclesLogged);
       const hourDeficit = (cycleDeficit * 1.5).toFixed(1);
       const remainingDays = 7 - loggedDaysCount;
 
-      // Update UI Header Dashboard Cards
       document.getElementById('deficit-value').innerText = `${hourDeficit} hrs`;
       document.getElementById('deficit-sub').innerText = `${cycleDeficit.toFixed(1)} cycles behind baseline`;
 
@@ -694,12 +754,10 @@
         return;
       }
 
-      // Rest of week minimum threshold
       const minRequiredCyclesPerNight = Math.min(5, Math.max(FLOOR_CYCLES, (FLOOR_CYCLES + (cycleDeficit / remainingDays))));
       minSleepVal.innerText = `${minRequiredCyclesPerNight.toFixed(1)} cycles`;
       minSleepSub.innerText = `~${(minRequiredCyclesPerNight * 1.5).toFixed(1)}h avg for remaining ${remainingDays} days`;
 
-      // Tonight's Recommendation Engine
       let recommendationHTML = '';
 
       if (cycleDeficit >= 2.5) {
@@ -740,7 +798,6 @@
       protocolText.innerHTML = recommendationHTML;
     }
 
-    // Initialize UI on window load
     window.onload = function() {
       renderDays();
       presetRecentContext();
