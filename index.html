@@ -596,6 +596,23 @@
       return Math.round(sleepMin + 15);
     }
 
+    function formatTime12hFromMinutes(totalMins) {
+      let normalized = Math.round(totalMins) % 1440;
+      if (normalized < 0) normalized += 1440;
+      const h24 = Math.floor(normalized / 60);
+      const m = Math.round(normalized % 60);
+      const period = h24 >= 12 ? 'PM' : 'AM';
+      let h12 = h24 % 12;
+      if (h12 === 0) h12 = 12;
+      return `${h12}:${m.toString().padStart(2, '0')} ${period}`;
+    }
+
+    function timeStrToMinutes(timeStr) {
+      if (!timeStr) return null;
+      const [h, m] = timeStr.split(':').map(Number);
+      return h * 60 + m;
+    }
+
     function renderDays() {
       const container = document.getElementById('days-container');
 
@@ -814,20 +831,6 @@
       }
     }
 
-    function timeStrToMinutes(timeStr) {
-      if (!timeStr) return null;
-      const [h, m] = timeStr.split(':').map(Number);
-      return h * 60 + m;
-    }
-
-    function minutesToTimeStr(totalMins) {
-      let normalized = Math.round(totalMins) % 1440;
-      if (normalized < 0) normalized += 1440;
-      const h = Math.floor(normalized / 60);
-      const m = normalized % 60;
-      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    }
-
     function calculateDeficit() {
       const shouldRound = document.getElementById('round-toggle')?.checked || false;
       const applyNapPenalty = document.getElementById('nap-penalty-toggle')?.checked || false;
@@ -973,7 +976,7 @@
               }
             }
 
-            const recTimeStr = minutesToTimeStr(recommendedBedtimeMins);
+            const recTimeStr = formatTime12hFromMinutes(recommendedBedtimeMins);
             const recDisplay = document.getElementById(`rec-display-${idx}`);
             if (recDisplay) {
               recDisplay.innerHTML = `Rec Bedtime: <strong>${recTimeStr}</strong> (${targetCycles.toFixed(1)} cyc)`;
