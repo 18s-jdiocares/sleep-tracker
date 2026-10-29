@@ -469,7 +469,7 @@
   <div class="app-container">
     <header>
       <h1>SLEEP SYNC</h1>
-      <p>Universal Cycle & Deficit Optimization Engine</p>
+      <p>Personalized Hybrid Cycle & Deficit Optimization Engine</p>
     </header>
 
     <!-- Top Metric Cards -->
@@ -523,17 +523,29 @@
 
   <script>
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const BASELINE_CYCLES = 5; // 7.5h baseline
-    const FLOOR_CYCLES = 4;    // 6.0h floor
-    const TODAY_INDEX = new Date().getDay(); // 0 = Sun, 1 = Mon ...
+    const BASELINE_CYCLES = 5; 
+    const FLOOR_CYCLES = 4;    
+    const TODAY_INDEX = new Date().getDay(); 
 
     const activeModes = Array(7).fill('time');
 
-    // 15-minute fall-asleep latency explicitly factored in
+    // Hybrid Cycle Conversion Model:
+    // Subtracts 15m fall-asleep latency first.
+    // First 3 cycles = 95 minutes each (285 mins total).
+    // Subsequent cycles = 90 minutes each.
     function convertMinutesToCycles(minutes, shouldRound = false) {
       if (minutes <= 0 || isNaN(minutes)) return 0;
       const sleepMin = Math.max(0, minutes - 15); // Subtract 15m latency buffer
-      const exactCycles = sleepMin / 90.0;
+      
+      let exactCycles = 0;
+      if (sleepMin <= 285) {
+        // Within first 3 cycles (3 * 95m)
+        exactCycles = sleepMin / 95.0;
+      } else {
+        // First 3 cycles = 3.0, remainder calculated at 90m/cycle
+        const remainingMin = sleepMin - 285;
+        exactCycles = 3.0 + (remainingMin / 90.0);
+      }
       
       if (shouldRound) {
         return Math.round(exactCycles);
@@ -590,12 +602,12 @@
                 <label>Overnight Cycles</label>
                 <select id="cycles-select-${idx}" onchange="saveAndCalculate()">
                   <option value="none">-- Not Logged --</option>
-                  <option value="6">6 Cycles (9.0h surplus / recovery)</option>
-                  <option value="5">5 Cycles (7.5h baseline)</option>
-                  <option value="4">4 Cycles (6.0h floor)</option>
-                  <option value="3">3 Cycles (4.5h short)</option>
-                  <option value="2">2 Cycles (3.0h minimal)</option>
-                  <option value="1">1 Cycle (1.5h extreme)</option>
+                  <option value="6">6 Cycles (9.25h surplus / recovery)</option>
+                  <option value="5">5 Cycles (7.75h baseline)</option>
+                  <option value="4">4 Cycles (6.25h floor)</option>
+                  <option value="3">3 Cycles (5.00h short)</option>
+                  <option value="2">2 Cycles (3.42h minimal)</option>
+                  <option value="1">1 Cycle (1.83h extreme)</option>
                   <option value="0">0 Cycles (0.0h)</option>
                 </select>
               </div>
@@ -674,7 +686,6 @@
       calculateDeficit();
     }
 
-    // LocalStorage Data Persistence
     function saveAndCalculate() {
       const dataToSave = {
         modes: activeModes,
@@ -780,7 +791,7 @@
 
       const targetCyclesSoFar = loggedDaysCount * BASELINE_CYCLES;
       const cycleDeficit = Math.max(0, targetCyclesSoFar - totalCyclesLogged);
-      const hourDeficit = (cycleDeficit * 1.5).toFixed(1);
+      const hourDeficit = (cycleDeficit * 1.55).toFixed(1); // Weighted average ~1.55h per cycle
       const remainingDays = 7 - loggedDaysCount;
 
       document.getElementById('deficit-value').innerText = `${hourDeficit} hrs`;
@@ -801,14 +812,14 @@
         minSleepVal.innerText = 'Week Done';
         minSleepSub.innerText = 'Resetting next week';
         protocolText.innerHTML = cycleDeficit > 0 
-          ? `<p>Week finished with a cumulative deficit of <strong>${hourDeficit} hours</strong> (${cycleDeficit.toFixed(1)} cycles). Schedule a 5-cycle recovery night (8.5h in bed) to begin next week in full rhythm.</p>`
+          ? `<p>Week finished with a cumulative deficit of <strong>${hourDeficit} hours</strong> (${cycleDeficit.toFixed(1)} cycles). Schedule a 5-cycle recovery night to begin next week in full rhythm.</p>`
           : '<p>Excellent job! You maintained your baseline with zero accumulated sleep deficit this week.</p>';
         return;
       }
 
       const minRequiredCyclesPerNight = Math.min(5, Math.max(FLOOR_CYCLES, (FLOOR_CYCLES + (cycleDeficit / remainingDays))));
       minSleepVal.innerText = `${minRequiredCyclesPerNight.toFixed(1)} cycles`;
-      minSleepSub.innerText = `~${(minRequiredCyclesPerNight * 1.5).toFixed(1)}h avg for remaining ${remainingDays} days`;
+      minSleepSub.innerText = `~${(minRequiredCyclesPerNight * 1.55).toFixed(1)}h avg for remaining ${remainingDays} days`;
 
       let recommendationHTML = '';
 
@@ -816,33 +827,30 @@
         recommendationHTML = `
           <p><strong>High Sleep Deficit Protocol (${hourDeficit} hrs behind baseline):</strong></p>
           <ul>
-            <li><strong>Primary Target Tonight:</strong> <span class="target-highlight">5 Cycles (8:30 PM Bedtime)</span> for deep REM recovery.</li>
-            <li><strong>Secondary Target:</strong> <span class="target-highlight">4 Cycles (10:05 PM Bedtime)</span>.</li>
-            <li><strong>HAZARD WINDOW (Avoid Bedtime):</strong> <span class="hazard-highlight">10:25 PM – 11:05 PM</span> (High risk of waking in Stage N3 deep sleep).</li>
-            <li><strong>Emergency Drop-Down:</strong> If you miss 10:05 PM, wait out the hazard window and hit <span class="target-highlight">11:40 PM for 3 Cycles</span>.</li>
+            <li><strong>Primary Target Tonight:</strong> <span class="target-highlight">5 Cycles (9:30 PM Bedtime for 5:15 AM Wake)</span> for deep REM recovery.</li>
+            <li><strong>Secondary Target:</strong> <span class="target-highlight">4 Cycles (11:00 PM Bedtime)</span>.</li>
+            <li><strong>HAZARD WINDOW (Avoid Bedtime):</strong> <span class="hazard-highlight">11:20 PM – 12:05 AM</span>.</li>
           </ul>
         `;
       } else if (previousNightCycles !== null && previousNightCycles <= 3) {
         recommendationHTML = `
           <p><strong>Back-to-Back Warning:</strong> You logged a short night recently (${previousNightCycles} cycles).</p>
           <ul>
-            <li><strong>Strict Rule:</strong> Do NOT take back-to-back 3-cycle nights. Target at least <span class="target-highlight">4 Cycles (10:05 PM Bedtime)</span> tonight.</li>
-            <li><strong>HAZARD WINDOW (Avoid Bedtime):</strong> <span class="hazard-highlight">10:25 PM – 11:05 PM</span>.</li>
+            <li><strong>Strict Rule:</strong> Do NOT take back-to-back 3-cycle nights. Target at least <span class="target-highlight">4 Cycles (11:00 PM Bedtime)</span> tonight.</li>
           </ul>
         `;
       } else if (cycleDeficit > 0) {
         recommendationHTML = `
           <p><strong>Moderate Deficit Protocol (${hourDeficit} hrs behind):</strong></p>
           <ul>
-            <li><strong>Tonight's Target:</strong> <span class="target-highlight">4 Cycles (10:05 PM Bedtime)</span> or <span class="target-highlight">5 Cycles (8:30 PM Bedtime)</span>.</li>
-            <li><strong>HAZARD WINDOW (Avoid Bedtime):</strong> <span class="hazard-highlight">10:25 PM – 11:05 PM</span>.</li>
+            <li><strong>Tonight's Target:</strong> <span class="target-highlight">4 Cycles (11:00 PM Bedtime)</span> or <span class="target-highlight">5 Cycles (9:30 PM Bedtime)</span>.</li>
           </ul>
         `;
       } else {
         recommendationHTML = `
           <p><strong>Optimal Sleep Balance:</strong> Zero deficit accumulated!</p>
           <ul>
-            <li>Maintain baseline with <span class="target-highlight">4 Cycles (10:05 PM Bedtime)</span> or <span class="target-highlight">5 Cycles (8:30 PM Bedtime)</span>.</li>
+            <li>Maintain baseline with <span class="target-highlight">4 Cycles (11:00 PM Bedtime)</span> or <span class="target-highlight">5 Cycles (9:30 PM Bedtime)</span>.</li>
           </ul>
         `;
       }
@@ -850,7 +858,6 @@
       protocolText.innerHTML = recommendationHTML;
     }
 
-    // Initialize UI on window load and load persistent data
     window.onload = function() {
       const loaded = loadSavedData();
       if (!loaded) {
