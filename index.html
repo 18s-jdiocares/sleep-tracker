@@ -200,7 +200,14 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 12px;
+    }
+
+    .controls-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
     /* Toggle Switch Style */
@@ -500,12 +507,21 @@
     <div class="schedule-card">
       <div class="section-title">
         <span>Weekly Log (Sun – Sat)</span>
-        <div class="toggle-container">
-          <span>Round to Nearest Cycle</span>
-          <label class="switch">
-            <input type="checkbox" id="round-toggle" onchange="saveAndCalculate()">
-            <span class="slider"></span>
-          </label>
+        <div class="controls-wrapper">
+          <div class="toggle-container">
+            <span>Nap Penalty (0.8x)</span>
+            <label class="switch">
+              <input type="checkbox" id="nap-penalty-toggle" onchange="saveAndCalculate()">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="toggle-container">
+            <span>Round Cycles</span>
+            <label class="switch">
+              <input type="checkbox" id="round-toggle" onchange="saveAndCalculate()">
+              <span class="slider"></span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -539,10 +555,8 @@
       
       let exactCycles = 0;
       if (sleepMin <= 285) {
-        // Within first 3 cycles (3 * 95m)
         exactCycles = sleepMin / 95.0;
       } else {
-        // First 3 cycles = 3.0, remainder calculated at 90m/cycle
         const remainingMin = sleepMin - 285;
         exactCycles = 3.0 + (remainingMin / 90.0);
       }
@@ -690,6 +704,7 @@
       const dataToSave = {
         modes: activeModes,
         roundToggle: document.getElementById('round-toggle')?.checked || false,
+        napPenaltyToggle: document.getElementById('nap-penalty-toggle')?.checked || false,
         days: days.map((_, idx) => ({
           bed: document.getElementById(`bed-${idx}`)?.value || '',
           wake: document.getElementById(`wake-${idx}`)?.value || '05:15',
@@ -715,6 +730,10 @@
           const toggle = document.getElementById('round-toggle');
           if (toggle) toggle.checked = parsed.roundToggle;
         }
+        if (parsed.napPenaltyToggle !== undefined) {
+          const napToggle = document.getElementById('nap-penalty-toggle');
+          if (napToggle) napToggle.checked = parsed.napPenaltyToggle;
+        }
         renderDays();
         if (parsed.days) {
           parsed.days.forEach((d, idx) => {
@@ -739,10 +758,13 @@
       let previousNightCycles = null;
 
       const shouldRound = document.getElementById('round-toggle')?.checked || false;
+      const applyNapPenalty = document.getElementById('nap-penalty-toggle')?.checked || false;
+      const napMultiplier = applyNapPenalty ? 0.8 : 1.0;
 
       days.forEach((_, idx) => {
         const mode = activeModes[idx];
-        const napVal = parseFloat(document.getElementById(`nap-${idx}`)?.value) || 0;
+        const rawNapVal = parseFloat(document.getElementById(`nap-${idx}`)?.value) || 0;
+        const effectiveNapVal = rawNapVal * napMultiplier;
         const displayBadge = document.getElementById(`cycles-display-${idx}`);
 
         let nightCycles = null;
@@ -773,7 +795,7 @@
 
         if (nightCycles !== null) {
           loggedDaysCount++;
-          const totalDayCycles = nightCycles + napVal;
+          const totalDayCycles = nightCycles + effectiveNapVal;
           totalCyclesLogged += totalDayCycles;
           if (displayBadge) {
             displayBadge.innerText = shouldRound 
@@ -785,13 +807,13 @@
             previousNightCycles = nightCycles;
           }
         } else {
-          if (displayBadge) displayBadge.innerText = napVal > 0 ? `+${napVal.toFixed(1)} nap` : '--';
+          if (displayBadge) displayBadge.innerText = effectiveNapVal > 0 ? `+${effectiveNapVal.toFixed(1)} nap` : '--';
         }
       });
 
       const targetCyclesSoFar = loggedDaysCount * BASELINE_CYCLES;
       const cycleDeficit = Math.max(0, targetCyclesSoFar - totalCyclesLogged);
-      const hourDeficit = (cycleDeficit * 1.55).toFixed(1); // Weighted average ~1.55h per cycle
+      const hourDeficit = (cycleDeficit * 1.55).toFixed(1); 
       const remainingDays = 7 - loggedDaysCount;
 
       document.getElementById('deficit-value').innerText = `${hourDeficit} hrs`;
