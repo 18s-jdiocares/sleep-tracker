@@ -500,7 +500,7 @@
     <!-- Top Metric Cards -->
     <div class="dashboard-grid">
       <div class="metric-card">
-        <span class="metric-title">Accumulated Deficit (Sun–Thu)</span>
+        <span class="metric-title">Accumulated Deficit (Up to Today)</span>
         <span class="metric-value alert" id="deficit-value">0.0 hrs</span>
         <span class="metric-sub" id="deficit-sub">0.0 cycles behind baseline</span>
       </div>
@@ -882,26 +882,22 @@
         }
       });
 
-      // 1. Calculate Accumulated Deficit UP TO TODAY (Sun–Thu) strictly based on 5-cycle baseline debt
+      // 1. Correct Accumulated Deficit UP TO TODAY (Sunday through Thursday)
       let elapsedDeficitCycles = 0;
-      
       for (let i = 0; i <= TODAY_INDEX; i++) {
         if (dayNightCycles[i] !== null) {
-          const totalLogged = dayNightCycles[i] + dayEffectiveNap[i];
-          if (totalLogged < BASELINE_CYCLES) {
-            elapsedDeficitCycles += (BASELINE_CYCLES - totalLogged);
+          const totalDaySleep = dayNightCycles[i] + dayEffectiveNap[i];
+          if (totalDaySleep < BASELINE_CYCLES) {
+            elapsedDeficitCycles += (BASELINE_CYCLES - totalDaySleep);
           }
-        } else {
-          // Unlogged past days assume 0 deficit until logged
         }
       }
+      const currentDeficitHours = (elapsedDeficitCycles * 1.55).toFixed(1);
 
-      const elapsedDeficitHours = (elapsedDeficitCycles * 1.55).toFixed(1);
-
-      document.getElementById('deficit-value').innerText = `${elapsedDeficitHours} hrs`;
+      document.getElementById('deficit-value').innerText = `${currentDeficitHours} hrs`;
       document.getElementById('deficit-sub').innerText = `${elapsedDeficitCycles.toFixed(1)} cycles behind baseline (Sun–Thu)`;
 
-      // 2. Recommendations for remaining days (Today onward) to hit weekly target deficit
+      // 2. Recommendations for remaining days (Today onward) to hit the weekly target deficit
       const targetTotalCyclesWeek = (7 * BASELINE_CYCLES) - targetDeficitCycles;
       
       let totalCyclesLoggedWeek = 0;
@@ -913,6 +909,12 @@
 
       const cyclesNeededRemaining = targetTotalCyclesWeek - totalCyclesLoggedWeek;
       const remainingDaysIndices = days.map((_, idx) => idx).filter(idx => idx >= TODAY_INDEX);
+
+      // Clear all existing recommendations first
+      days.forEach((_, idx) => {
+        const recDisplay = document.getElementById(`rec-display-${idx}`);
+        if (recDisplay) recDisplay.innerText = '';
+      });
 
       if (remainingDaysIndices.length > 0) {
         let maxPossibleRemainingCycles = 0;
@@ -984,14 +986,6 @@
           });
         }
       }
-
-      // Clear past days' recommendations (before Today)
-      days.forEach((_, idx) => {
-        if (idx < TODAY_INDEX) {
-          const recDisplay = document.getElementById(`rec-display-${idx}`);
-          if (recDisplay) recDisplay.innerText = '';
-        }
-      });
 
       // Render final cycle badges
       days.forEach((_, idx) => {
