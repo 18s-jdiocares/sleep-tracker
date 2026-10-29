@@ -87,8 +87,8 @@
 
     .status-banner.error {
       display: block;
-      background: rgba(255, 118, 117, 0.12);
-      border: 1px solid rgba(255, 118, 117, 0.4);
+      background: rgba(255, 118, 117, 0.15);
+      border: 1px solid rgba(255, 118, 117, 0.5);
       color: #ff9999;
     }
 
@@ -412,8 +412,12 @@
       font-size: 11px;
       color: var(--cyan);
       font-weight: 600;
-      margin-top: 2px;
+      margin-top: 4px;
       text-align: right;
+    }
+
+    .recommended-bedtime.capped {
+      color: var(--warning);
     }
 
     /* Action Buttons */
@@ -562,7 +566,7 @@
   <script>
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const BASELINE_CYCLES = 5.0; 
-    const TODAY_INDEX = new Date().getDay(); // 4 for Thursday
+    const TODAY_INDEX = new Date().getDay(); 
 
     const activeModes = Array(7).fill('time');
     const earliestBedtimes = Array(7).fill('');
@@ -638,16 +642,16 @@
               <!-- Earliest Bedtime Limit -->
               <div class="input-group">
                 <label>Earliest Bedtime <span style="font-weight:normal; color:var(--text-dim);">(Limit)</span></label>
-                <input type="time" id="earliest-${idx}" value="${earliestBedtimes[idx]}" onchange="updateEarliest(${idx}, this.value)" placeholder="Any">
+                <input type="time" id="earliest-${idx}" value="${earliestBedtimes[idx]}" oninput="updateEarliest(${idx}, this.value)" onchange="updateEarliest(${idx}, this.value)" placeholder="Any">
               </div>
 
               <!-- Mode 1: Time in Bed -->
               <div class="input-group" id="group-time-${idx}" style="display: ${mode === 'time' ? 'flex' : 'none'};">
                 <label>Bed Time – Wake Time</label>
                 <div class="time-wrap">
-                  <input type="time" id="bed-${idx}" onchange="saveAndCalculate()">
+                  <input type="time" id="bed-${idx}" oninput="saveAndCalculate()" onchange="saveAndCalculate()">
                   <span style="font-size:11px; color:var(--text-dim);">to</span>
-                  <input type="time" id="wake-${idx}" value="06:15" onchange="saveAndCalculate()">
+                  <input type="time" id="wake-${idx}" value="06:15" oninput="saveAndCalculate()" onchange="saveAndCalculate()">
                 </div>
               </div>
 
@@ -737,6 +741,11 @@
         document.getElementById(`nap-${idx}`).value = d.nap;
       });
 
+      // Preset earliest limits for Thu/Sat
+      earliestBedtimes[4] = '21:15';
+      earliestBedtimes[6] = '21:15';
+      
+      renderDays();
       saveAndCalculate();
     }
 
@@ -882,42 +891,43 @@
         }
       });
 
-      // 1. Correct Accumulated Deficit UP TO TODAY (Sunday through Thursday)
+      // 1. Calculate Elapsed Deficit (Sunday through Wednesday prior to today)
       let elapsedDeficitCycles = 0;
-      for (let i = 0; i <= TODAY_INDEX; i++) {
-        if (dayNightCycles[i] !== null) {
-          const totalDaySleep = dayNightCycles[i] + dayEffectiveNap[i];
-          if (totalDaySleep < BASELINE_CYCLES) {
-            elapsedDeficitCycles += (BASELINE_CYCLES - totalDaySleep);
-          }
+      for (let i = 0; i < TODAY_INDEX; i++) {
+        const totalDaySleep = (dayNightCycles[i] !== null ? dayNightCycles[i] : 0) + dayEffectiveNap[i];
+        if (totalDaySleep < BASELINE_CYCLES) {
+          elapsedDeficitCycles += (BASELINE_CYCLES - totalDaySleep);
         }
       }
       const currentDeficitHours = (elapsedDeficitCycles * 1.55).toFixed(1);
 
       document.getElementById('deficit-value').innerText = `${currentDeficitHours} hrs`;
-      document.getElementById('deficit-sub').innerText = `${elapsedDeficitCycles.toFixed(1)} cycles behind baseline (Sun–Thu)`;
+      document.getElementById('deficit-sub').innerText = `${elapsedDeficitCycles.toFixed(1)} cycles behind baseline (Sun–Wed)`;
 
-      // 2. Recommendations for remaining days (Today onward) to hit the weekly target deficit
-      const targetTotalCyclesWeek = (7 * BASELINE_CYCLES) - targetDeficitCycles;
-      
-      let totalCyclesLoggedWeek = 0;
+      // 2. Clear all recommendation displays first
       days.forEach((_, idx) => {
-        if (dayNightCycles[idx] !== null) {
-          totalCyclesLoggedWeek += (dayNightCycles[idx] + dayEffectiveNap[idx]);
+        const recDisplay = document.getElementById(`rec-display-${idx}`);
+        if (recDisplay) {
+          recDisplay.innerText = '';
+          recDisplay.className = 'recommended-bedtime';
         }
       });
 
-      const cyclesNeededRemaining = targetTotalCyclesWeek - totalCyclesLoggedWeek;
-      const remainingDaysIndices = days.map((_, idx) => idx).filter(idx => idx >= TODAY_INDEX);
+      // 3. Compute target cycles needed for remaining nights (Thursday through Saturday)
+      const targetTotalCyclesWeek = (7 * BASELINE_CYCLES) - targetDeficitCycles;
+      
+      let cyclesLoggedPrior = 0;
+      for (let i = 0; i < TODAY_INDEX; i++) {
+        cyclesLoggedPrior += ((dayNightCycles[i] !== null ? dayNightCycles[i] : 0) + dayEffectiveNap[i]);
+      }
 
-      // Clear all existing recommendations first
-      days.forEach((_, idx) => {
-        const recDisplay = document.getElementById(`rec-display-${idx}`);
-        if (recDisplay) recDisplay.innerText = '';
-      });
+      const cyclesNeededRemaining = targetTotalCyclesWeek - cyclesLoggedPrior;
+      const remainingDaysIndices = days.map((_, idx) => idx).filter(idx => idx >= TODAY_INDEX);
 
       if (remainingDaysIndices.length > 0) {
         let maxPossibleRemainingCycles = 0;
+        const maxCyclesMap = {};
+
         remainingDaysIndices.forEach(idx => {
           const wakeVal = document.getElementById(`wake-${idx}`)?.value || '06:15';
           const wakeMins = timeStrToMinutes(wakeVal);
@@ -930,64 +940,87 @@
             if (sleepMin <= 0) sleepMin += 1440;
             maxCyclesForDay = convertMinutesToCycles(sleepMin, false);
           }
+          maxCyclesMap[idx] = maxCyclesForDay;
           maxPossibleRemainingCycles += (maxCyclesForDay + dayEffectiveNap[idx]);
         });
 
+        // Feasibility check against user's earliest bedtimes
         if (cyclesNeededRemaining > maxPossibleRemainingCycles) {
+          const maxPossibleDeficitHours = ((7 * BASELINE_CYCLES - (cyclesLoggedPrior + maxPossibleRemainingCycles)) * 1.55).toFixed(1);
           feasibilityBanner.className = 'status-banner error';
-          feasibilityBanner.innerHTML = `⚠️ <strong>Target Unreachable:</strong> It is mathematically impossible to reach your target deficit of <strong>${targetDeficitHours.toFixed(1)} hrs</strong> with the earliest bedtime limits specified.`;
+          feasibilityBanner.innerHTML = `⚠️ <strong>Target Unreachable:</strong> With your earliest bedtime constraints, the minimum achievable deficit is <strong>${maxPossibleDeficitHours} hrs</strong>. (Requested: ${targetDeficitHours.toFixed(1)} hrs).`;
         } else {
-          let remainingToDistribute = cyclesNeededRemaining;
-          const assignedCycles = {};
-          let unassignedCount = remainingDaysIndices.length;
-
-          remainingDaysIndices.forEach(idx => {
-            const wakeVal = document.getElementById(`wake-${idx}`)?.value || '06:15';
-            const wakeMins = timeStrToMinutes(wakeVal);
-            const earliestVal = earliestBedtimes[idx];
-
-            let maxCyclesForDay = 6.0;
-            if (earliestVal) {
-              let bedMins = timeStrToMinutes(earliestVal);
-              let sleepMin = wakeMins - bedMins;
-              if (sleepMin <= 0) sleepMin += 1440;
-              maxCyclesForDay = convertMinutesToCycles(sleepMin, false);
-            }
-
-            let idealForDay = remainingToDistribute / unassignedCount;
-            let chosenCycles = Math.min(maxCyclesForDay, Math.max(4.0, idealForDay));
-            
-            assignedCycles[idx] = chosenCycles;
-            remainingToDistribute -= chosenCycles;
-            unassignedCount--;
-          });
-
-          remainingDaysIndices.forEach(idx => {
-            const wakeVal = document.getElementById(`wake-${idx}`)?.value || '06:15';
-            const wakeMins = timeStrToMinutes(wakeVal);
-            const targetCycles = assignedCycles[idx];
-            
-            let neededSleepMins = convertCyclesToMinutes(targetCycles);
-            let recommendedBedtimeMins = wakeMins - neededSleepMins;
-            
-            if (earliestBedtimes[idx]) {
-              let earliestMins = timeStrToMinutes(earliestBedtimes[idx]);
-              let diffToEarliest = earliestMins - recommendedBedtimeMins;
-              if (diffToEarliest > 0 && diffToEarliest < 720) {
-                recommendedBedtimeMins = earliestMins;
-              }
-            }
-
-            const recTimeStr = formatTime12hFromMinutes(recommendedBedtimeMins);
-            const recDisplay = document.getElementById(`rec-display-${idx}`);
-            if (recDisplay) {
-              recDisplay.innerHTML = `Rec Bedtime: <strong>${recTimeStr}</strong> (${targetCycles.toFixed(1)} cyc)`;
-            }
-          });
+          feasibilityBanner.style.display = 'none';
         }
+
+        // Allocate recommended cycles across remaining days respecting max limits
+        let remainingToDistribute = cyclesNeededRemaining;
+        const assignedCycles = {};
+
+        // Initial equal distribution
+        remainingDaysIndices.forEach(idx => {
+          assignedCycles[idx] = remainingToDistribute / remainingDaysIndices.length;
+        });
+
+        // Cap days that exceed their earliest bedtime limit and redistribute remainder
+        let adjusted = true;
+        while (adjusted) {
+          adjusted = false;
+          let excessToDistribute = 0;
+          let unconstrainedCount = 0;
+
+          remainingDaysIndices.forEach(idx => {
+            if (assignedCycles[idx] > maxCyclesMap[idx]) {
+              excessToDistribute += (assignedCycles[idx] - maxCyclesMap[idx]);
+              assignedCycles[idx] = maxCyclesMap[idx];
+              adjusted = true;
+            }
+          });
+
+          remainingDaysIndices.forEach(idx => {
+            if (assignedCycles[idx] < maxCyclesMap[idx]) {
+              unconstrainedCount++;
+            }
+          });
+
+          if (excessToDistribute > 0 && unconstrainedCount > 0) {
+            remainingDaysIndices.forEach(idx => {
+              if (assignedCycles[idx] < maxCyclesMap[idx]) {
+                assignedCycles[idx] += excessToDistribute / unconstrainedCount;
+              }
+            });
+          }
+        }
+
+        // Render recommended bedtimes
+        remainingDaysIndices.forEach(idx => {
+          const wakeVal = document.getElementById(`wake-${idx}`)?.value || '06:15';
+          const wakeMins = timeStrToMinutes(wakeVal);
+          const targetCycles = Math.min(6.0, Math.max(0, assignedCycles[idx]));
+          
+          let neededSleepMins = convertCyclesToMinutes(targetCycles);
+          let recommendedBedtimeMins = wakeMins - neededSleepMins;
+          let isCapped = false;
+
+          if (earliestBedtimes[idx]) {
+            let earliestMins = timeStrToMinutes(earliestBedtimes[idx]);
+            let diffToEarliest = earliestMins - recommendedBedtimeMins;
+            if (diffToEarliest > 0 && diffToEarliest < 720) {
+              recommendedBedtimeMins = earliestMins;
+              isCapped = true;
+            }
+          }
+
+          const recTimeStr = formatTime12hFromMinutes(recommendedBedtimeMins);
+          const recDisplay = document.getElementById(`rec-display-${idx}`);
+          if (recDisplay) {
+            recDisplay.className = `recommended-bedtime ${isCapped ? 'capped' : ''}`;
+            recDisplay.innerHTML = `Target: <strong>${recTimeStr}</strong> (${targetCycles.toFixed(1)} cyc)${isCapped ? ' [Limit]' : ''}`;
+          }
+        });
       }
 
-      // Render final cycle badges
+      // Render actual cycle badges
       days.forEach((_, idx) => {
         const effectiveNapVal = dayEffectiveNap[idx];
         const displayBadge = document.getElementById(`cycles-display-${idx}`);
