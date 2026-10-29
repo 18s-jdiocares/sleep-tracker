@@ -500,9 +500,9 @@
     <!-- Top Metric Cards -->
     <div class="dashboard-grid">
       <div class="metric-card">
-        <span class="metric-title">Accumulated Deficit (Up to Today)</span>
+        <span class="metric-title">Accumulated Deficit (Sun–Thu)</span>
         <span class="metric-value alert" id="deficit-value">0.0 hrs</span>
-        <span class="metric-sub" id="deficit-sub">0.0 cycles behind target</span>
+        <span class="metric-sub" id="deficit-sub">0.0 cycles behind baseline</span>
       </div>
 
       <div class="metric-card">
@@ -561,7 +561,7 @@
 
   <script>
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const BASELINE_CYCLES = 5; 
+    const BASELINE_CYCLES = 5.0; 
     const TODAY_INDEX = new Date().getDay(); // 4 for Thursday
 
     const activeModes = Array(7).fill('time');
@@ -882,26 +882,26 @@
         }
       });
 
-      // 1. Calculate Accumulated Deficit UP TO TODAY (Sunday through Thursday)
-      let elapsedDaysCount = TODAY_INDEX + 1; 
-      let elapsedLoggedCycles = 0;
+      // 1. Calculate Accumulated Deficit UP TO TODAY (Sun–Thu) strictly based on 5-cycle baseline debt
+      let elapsedDeficitCycles = 0;
       
       for (let i = 0; i <= TODAY_INDEX; i++) {
         if (dayNightCycles[i] !== null) {
-          elapsedLoggedCycles += (dayNightCycles[i] + dayEffectiveNap[i]);
+          const totalLogged = dayNightCycles[i] + dayEffectiveNap[i];
+          if (totalLogged < BASELINE_CYCLES) {
+            elapsedDeficitCycles += (BASELINE_CYCLES - totalLogged);
+          }
         } else {
-          elapsedLoggedCycles += BASELINE_CYCLES;
+          // Unlogged past days assume 0 deficit until logged
         }
       }
 
-      const targetCyclesUpToToday = (elapsedDaysCount * BASELINE_CYCLES) - (targetDeficitCycles * (elapsedDaysCount / 7.0));
-      const currentDeficitCycles = Math.max(0, targetCyclesUpToToday - elapsedLoggedCycles);
-      const currentDeficitHours = (currentDeficitCycles * 1.55).toFixed(1);
+      const elapsedDeficitHours = (elapsedDeficitCycles * 1.55).toFixed(1);
 
-      document.getElementById('deficit-value').innerText = `${currentDeficitHours} hrs`;
-      document.getElementById('deficit-sub').innerText = `${currentDeficitCycles.toFixed(1)} cycles behind target (Sun–Thu)`;
+      document.getElementById('deficit-value').innerText = `${elapsedDeficitHours} hrs`;
+      document.getElementById('deficit-sub').innerText = `${elapsedDeficitCycles.toFixed(1)} cycles behind baseline (Sun–Thu)`;
 
-      // 2. Recommendations for remaining days (Today onward)
+      // 2. Recommendations for remaining days (Today onward) to hit weekly target deficit
       const targetTotalCyclesWeek = (7 * BASELINE_CYCLES) - targetDeficitCycles;
       
       let totalCyclesLoggedWeek = 0;
@@ -952,7 +952,6 @@
               maxCyclesForDay = convertMinutesToCycles(sleepMin, false);
             }
 
-            // Enforce realistic recovery floor (at least 4.0 cycles per remaining night for proper protocol protection)
             let idealForDay = remainingToDistribute / unassignedCount;
             let chosenCycles = Math.min(maxCyclesForDay, Math.max(4.0, idealForDay));
             
