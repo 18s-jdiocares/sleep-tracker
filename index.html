@@ -901,7 +901,7 @@
       document.getElementById('deficit-value').innerText = `${currentDeficitHours} hrs`;
       document.getElementById('deficit-sub').innerText = `${currentDeficitCycles.toFixed(1)} cycles behind target (Sun–Thu)`;
 
-      // 2. Always calculate and show recommendations for remaining days (Today onward)
+      // 2. Recommendations for remaining days (Today onward)
       const targetTotalCyclesWeek = (7 * BASELINE_CYCLES) - targetDeficitCycles;
       
       let totalCyclesLoggedWeek = 0;
@@ -952,8 +952,9 @@
               maxCyclesForDay = convertMinutesToCycles(sleepMin, false);
             }
 
+            // Enforce realistic recovery floor (at least 4.0 cycles per remaining night for proper protocol protection)
             let idealForDay = remainingToDistribute / unassignedCount;
-            let chosenCycles = Math.min(maxCyclesForDay, Math.max(2.0, idealForDay));
+            let chosenCycles = Math.min(maxCyclesForDay, Math.max(4.0, idealForDay));
             
             assignedCycles[idx] = chosenCycles;
             remainingToDistribute -= chosenCycles;
