@@ -731,7 +731,8 @@
         { mode: 'time', bed: '02:00', wake: '07:15', nap: '0' }, // Sun
         { mode: 'time', bed: '01:30', wake: '06:15', nap: '0' }, // Mon
         { mode: 'time', bed: '00:45', wake: '05:15', nap: '0' }, // Tue
-        { mode: 'time', bed: '01:15', wake: '06:15', nap: '0' }  // Wed
+        { mode: 'time', bed: '01:15', wake: '06:15', nap: '0' }, // Wed
+        { mode: 'time', bed: '22:15', wake: '06:15', nap: '0' }  // Thu
       ];
 
       presetData.forEach((d, idx) => {
@@ -891,14 +892,12 @@
         }
       });
 
-      // 1. Calculate Elapsed Deficit UP TO TODAY (Sunday through Thursday)
+      // 1. Calculate Elapsed Deficit (Sunday through Thursday prior to today)
       let elapsedDeficitCycles = 0;
-      for (let i = 0; i <= TODAY_INDEX; i++) {
-        if (dayNightCycles[i] !== null) {
-          const totalDaySleep = dayNightCycles[i] + dayEffectiveNap[i];
-          if (totalDaySleep < BASELINE_CYCLES) {
-            elapsedDeficitCycles += (BASELINE_CYCLES - totalDaySleep);
-          }
+      for (let i = 0; i < TODAY_INDEX; i++) {
+        const totalDaySleep = (dayNightCycles[i] !== null ? dayNightCycles[i] : 0) + dayEffectiveNap[i];
+        if (totalDaySleep < BASELINE_CYCLES) {
+          elapsedDeficitCycles += (BASELINE_CYCLES - totalDaySleep);
         }
       }
       const currentDeficitHours = (elapsedDeficitCycles * 1.55).toFixed(1);
@@ -915,18 +914,16 @@
         }
       });
 
-      // 3. Compute target cycles needed for remaining nights
+      // 3. Compute target cycles needed for remaining nights (Friday through Saturday)
       const targetTotalCyclesWeek = (7 * BASELINE_CYCLES) - targetDeficitCycles;
       
       let cyclesLoggedPrior = 0;
-      for (let i = 0; i <= TODAY_INDEX; i++) {
-        if (dayNightCycles[i] !== null) {
-          cyclesLoggedPrior += (dayNightCycles[i] + dayEffectiveNap[i]);
-        }
+      for (let i = 0; i < TODAY_INDEX; i++) {
+        cyclesLoggedPrior += ((dayNightCycles[i] !== null ? dayNightCycles[i] : 0) + dayEffectiveNap[i]);
       }
 
       const cyclesNeededRemaining = targetTotalCyclesWeek - cyclesLoggedPrior;
-      const remainingDaysIndices = days.map((_, idx) => idx).filter(idx => idx > TODAY_INDEX);
+      const remainingDaysIndices = days.map((_, idx) => idx).filter(idx => idx >= TODAY_INDEX);
 
       if (remainingDaysIndices.length > 0) {
         let maxPossibleRemainingCycles = 0;
@@ -944,8 +941,8 @@
             if (sleepMin <= 0) sleepMin += 1440;
             maxCyclesForDay = convertMinutesToCycles(sleepMin, false);
           }
-          maxCyclesMap[idx] = maxCyclesForDay;
-          maxPossibleRemainingCycles += (maxCyclesForDay + dayEffectiveNap[idx]);
+          maxCyclesMap[idx] = Math.min(6.0, maxCyclesForDay);
+          maxPossibleRemainingCycles += (maxCyclesMap[idx] + dayEffectiveNap[idx]);
         });
 
         // Feasibility check against user's earliest bedtimes
@@ -966,7 +963,7 @@
           assignedCycles[idx] = remainingToDistribute / remainingDaysIndices.length;
         });
 
-        // Cap days that exceed their limits and redistribute remainder
+        // Cap days that exceed their earliest bedtime limit or 6-cycle ceiling
         let adjusted = true;
         while (adjusted) {
           adjusted = false;
@@ -996,7 +993,7 @@
           }
         }
 
-        // Render recommended bedtimes with explicit boundary labels
+        // Render recommended bedtimes for ALL remaining days
         remainingDaysIndices.forEach(idx => {
           const wakeVal = document.getElementById(`wake-${idx}`)?.value || '06:15';
           const wakeMins = timeStrToMinutes(wakeVal);
