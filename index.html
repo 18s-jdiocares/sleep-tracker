@@ -535,6 +535,13 @@
         <span>Weekly Log (Sun – Sat)</span>
         <div class="controls-wrapper">
           <div class="toggle-container">
+            <span>6-Cycle Ceiling</span>
+            <label class="switch">
+              <input type="checkbox" id="ceiling-toggle" checked onchange="saveAndCalculate()">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="toggle-container">
             <span>Nap Penalty (0.8x)</span>
             <label class="switch">
               <input type="checkbox" id="nap-penalty-toggle" onchange="saveAndCalculate()">
@@ -775,6 +782,7 @@
         if (recDisplay) recDisplay.innerText = '';
       });
       document.getElementById('target-deficit-input').value = '4.0';
+      if (document.getElementById('ceiling-toggle')) document.getElementById('ceiling-toggle').checked = true;
       localStorage.removeItem('sleepSyncData');
       calculateDeficit();
     }
@@ -785,6 +793,7 @@
         earliestBedtimes: earliestBedtimes,
         targetDeficit: document.getElementById('target-deficit-input')?.value || '4.0',
         roundToggle: document.getElementById('round-toggle')?.checked || false,
+        ceilingToggle: document.getElementById('ceiling-toggle')?.checked ?? true,
         napPenaltyToggle: document.getElementById('nap-penalty-toggle')?.checked || false,
         days: days.map((_, idx) => ({
           bed: document.getElementById(`bed-${idx}`)?.value || '',
@@ -818,6 +827,10 @@
           const toggle = document.getElementById('round-toggle');
           if (toggle) toggle.checked = parsed.roundToggle;
         }
+        if (parsed.ceilingToggle !== undefined) {
+          const cToggle = document.getElementById('ceiling-toggle');
+          if (cToggle) cToggle.checked = parsed.ceilingToggle;
+        }
         if (parsed.napPenaltyToggle !== undefined) {
           const napToggle = document.getElementById('nap-penalty-toggle');
           if (napToggle) napToggle.checked = parsed.napPenaltyToggle;
@@ -843,6 +856,7 @@
 
     function calculateDeficit() {
       const shouldRound = document.getElementById('round-toggle')?.checked || false;
+      const enforceCeiling = document.getElementById('ceiling-toggle')?.checked ?? true;
       const applyNapPenalty = document.getElementById('nap-penalty-toggle')?.checked || false;
       const napMultiplier = applyNapPenalty ? 0.8 : 1.0;
       const targetDeficitHours = parseFloat(document.getElementById('target-deficit-input')?.value) || 4.0;
@@ -934,22 +948,31 @@
           const wakeMins = timeStrToMinutes(wakeVal);
           const earliestVal = earliestBedtimes[idx];
 
-          let maxCyclesForDay = 6.0; 
+          let maxCyclesForDay = enforceCeiling ? 6.0 : 12.0; 
           if (earliestVal) {
             const bedMins = timeStrToMinutes(earliestVal);
             let sleepMin = wakeMins - bedMins;
             if (sleepMin <= 0) sleepMin += 1440;
-            maxCyclesForDay = convertMinutesToCycles(sleepMin, false);
+            const cyclesFromEarliest = convertMinutesToCycles(sleepMin, false);
+            maxCyclesForDay = Math.min(maxCyclesForDay, cyclesFromEarliest);
           }
-          maxCyclesMap[idx] = Math.min(6.0, maxCyclesForDay);
+          maxCyclesMap[idx] = maxCyclesForDay;
           maxPossibleRemainingCycles += (maxCyclesMap[idx] + dayEffectiveNap[idx]);
         });
 
-        // Feasibility check against user's earliest bedtimes
+        // Dynamic Feasibility Check reflecting active constraints (Earliest bedtime & 6-Cycle ceiling toggle)
         if (cyclesNeededRemaining > maxPossibleRemainingCycles) {
           const maxPossibleDeficitHours = ((7 * BASELINE_CYCLES - (cyclesLoggedPrior + maxPossibleRemainingCycles)) * 1.55).toFixed(1);
+          
+          let constraintReasons = [];
+          if (enforceCeiling) constraintReasons.push("6-cycle ceiling");
+          const hasEarliestLimits = remainingDaysIndices.some(idx => earliestBedtimes[idx]);
+          if (hasEarliestLimits) constraintReasons.push("earliest bedtime limits");
+
+          const reasonText = constraintReasons.length > 0 ? constraintReasons.join(" and ") : "current constraints";
+
           feasibilityBanner.className = 'status-banner error';
-          feasibilityBanner.innerHTML = `⚠️ <strong>Target Unreachable:</strong> With your earliest bedtime constraints, the minimum achievable deficit is <strong>${maxPossibleDeficitHours} hrs</strong>. (Requested: ${targetDeficitHours.toFixed(1)} hrs).`;
+          feasibilityBanner.innerHTML = `⚠️ <strong>Target Unreachable:</strong> With your ${reasonText}, the minimum achievable deficit is <strong>${maxPossibleDeficitHours} hrs</strong> (Requested: ${targetDeficitHours.toFixed(1)} hrs).`;
         } else {
           feasibilityBanner.style.display = 'none';
         }
@@ -963,7 +986,7 @@
           assignedCycles[idx] = remainingToDistribute / remainingDaysIndices.length;
         });
 
-        // Cap days that exceed their earliest bedtime limit or 6-cycle ceiling
+        // Cap days that exceed their max limits and redistribute remainder
         let adjusted = true;
         while (adjusted) {
           adjusted = false;
@@ -997,7 +1020,8 @@
         remainingDaysIndices.forEach(idx => {
           const wakeVal = document.getElementById(`wake-${idx}`)?.value || '06:15';
           const wakeMins = timeStrToMinutes(wakeVal);
-          const targetCycles = Math.min(6.0, Math.max(0, assignedCycles[idx]));
+          const maxCap = enforceCeiling ? 6.0 : 12.0;
+          const targetCycles = Math.min(maxCap, Math.max(0, assignedCycles[idx]));
           
           let neededSleepMins = convertCyclesToMinutes(targetCycles);
           let recommendedBedtimeMins = wakeMins - neededSleepMins;
@@ -1013,7 +1037,7 @@
             }
           }
 
-          if (targetCycles >= 6.0) {
+          if (targetCycles >= 6.0 && enforceCeiling) {
             boundingReason = `6-Cycle Ceiling`;
           }
 
